@@ -1,0 +1,374 @@
+---
+title: "case_study1"
+author: "Prudhvi"
+date: "4/10/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load Libraries
+
+Load the required libraries
+
+```{r load_libraries ,results='hide',message=FALSE,warning=FALSE}
+library(ggplot2)
+library(dplyr)
+library(stringr)
+library(ggrepel)
+library(GGally)
+library(RColorBrewer)
+library(maps)
+library(alluvial)
+library(randomForest)
+```
+
+## Removing Scientific Values
+```{r results='hide',message=FALSE,warning=FALSE}
+options(scipen = 100)
+```
+## Load the Data
+Load the data and check to see if everything is consistent using str().
+- Check if there are NA values present
+- Replace Null Character with NA
+- Change the format of date from Character to Date
+
+```{r results='hide',message=FALSE,warning=FALSE}
+loans <- read.csv('loans_full_schema.csv',header = T)
+str(loans)
+sum(is.na(loans))
+
+# Empty Character to NA
+loans[loans==''] <- NA
+
+# Change Date format 
+loans$issue_month<-  paste(loans$issue_month, "-01",sep="")
+loans$issue_month<- as.Date(loans$issue_month,"%b-%Y-%d")
+```
+## Visualizations {.tabset}
+### Geographic Heatmap
+In this geographic heat map, we can observe that there are more states with an average interest rate of between 12 and 13%.
+
+Also, states like California, New York, Pennsylvania, New Hampshire, and Delaware had an average of 13-14% interest rate on loans. Most of which are on the eastern coast
+
+Then, we have Iowa where there is no loan reportedly taken. Looks like Forbes Richest People are living in Iowa.
+
+We have Maryland and Washington, D.C. which have an average interest on loans below 10% which is the least in the United States. If you are looking to take a loan, better move to Maryland.
+
+Lastly, we have states like Vermont, Arizona, New Mexico, Kansas, Missouri, Kentucky, North Dakota, Wyoming, and Oregon have an average interest rate between 11-12%.
+
+```{r echo=FALSE,results='hide',message=FALSE,warning=FALSE}
+# Data of interest rate and state
+loan_interest <- loans[,c(3,43)]
+
+# Match state abbreviations with state names
+loan_interest$state <- state.name[match(loan_interest$state, state.abb)]
+
+# Sum of NA values
+sum(is.na(loan_interest))
+
+# Washington DC was missing 
+loan_interest$state[is.na(loan_interest$state)] <- 'Washington'
+
+# Filter the data and create an average
+loan_interest <-loan_interest %>%
+  group_by(state) %>% 
+  summarise(avg=mean(interest_rate))  %>% 
+  arrange(state,by_group=T) 
+
+loan_interest <- loan_interest[-c(11),]
+
+
+
+# Make color buckets
+loan_interest$colorBuckets <- as.numeric(cut(loan_interest$avg, 
+                                       c(0,11,12,13,14,Inf)))
+
+# Create a legend text
+leg.txt<- c("<11%", "11-12%", "12-13%", "13-14%", ">14%")
+
+# Crate a color palette
+palette <- brewer.pal(5, "Pastel1")
+
+# Map color to color buckets
+loan_interest$colorCode <- palette[loan_interest$colorBuckets]
+
+# Map the data
+map(database = 'state',
+    region = loan_interest$state,
+    col=loan_interest$colorCode,fill=T,lty=1,lwd=1)
+
+# Add a legend
+legend('bottomright',legend=leg.txt,
+       horiz = F,fill = palette)
+
+# Add a title
+title(main= "Average Interest Rate per State",
+      font.main= 2, cex.main =2 , col.main= 'black')
+dev.off()
+```
+
+### Bar Chart
+This is a simple bar chart that shows the purpose of loan for people in management positions. As we can see, most of them have taken a loan for debit consolidation which refers to taking a loan to pay off multiple debts, followed by credit card payment.
+
+There is very nice manager who spent money on Renewable Energy. Kudos!
+
+From the initial data set we have almost 1400+ managers and very few of them received a loan on House, Medical reasons, Car, Vacation.
+
+```{r echo=FALSE,results='hide',message=FALSE,warning=FALSE}
+# Loan data of Managers
+
+loan_managers <- subset(loans, grepl('manage', emp_title))
+
+loan_managers <- loan_managers[c(39)]
+str(loan_managers)
+loan_managers <- loan_managers %>% 
+  group_by(loan_purpose) %>% 
+  summarise(count = n())
+
+loan_managers $loan_purpose <- c('Car','Credit Card',
+                                 'Debt Consolidation',
+                                 'Home Improvement',
+                                 'House',
+                                 'Major Purchase',
+                                 'Medical',
+                                 'Moving',
+                                 'Other',
+                                 'Renewable Energy',
+                                 'Small Business',
+                                 'Vacation')
+
+plot2 <- loan_managers %>% 
+  arrange(count,loan_purpose) %>% 
+  mutate(loan_purpose = factor(loan_purpose, levels = unique(loan_purpose))) %>%
+  ggplot(aes(x= loan_purpose,y=count)) +
+  geom_col(aes(fill=as.factor(loan_purpose))) +
+  geom_label(aes(label= count),nudge_y = 15) +
+  labs(title = "Loan Purpose of Managers",
+       x= "Loan Purpose",
+       y= "No. of Managers",
+       fill= 'Purpose of Loan') +
+  theme_classic()+
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.position = 'none') + coord_flip()
+plot2
+dev.off()
+```
+
+### Parallel Coordination
+
+This is really interesting plot which shows the variability in different factors grouped by the type of home ownership (Mortgage, Own, or Rent). Looks like most of them are living in a Mortgage home. There is box plot in the back which shows the exact variability of the particular data.
+
+First let us see the term, very few people have got the 60 months loan term. Also,people who had own home, took a lower loan term.
+
+Next, interest rate which shows which is dependent on he annual income i.e. people with higher annual income have got higher interest rates and people with lower annual income have got lower interest rates. Now this variability is because of the loan amount taken. People who took low loan amounts have got higher interest rates.
+
+The loan grade show another story, there are very few hiring managers with a E grade or D grade loan. While, there are more individuals with a C grade loan than a A or B grade loan.
+```{r echo=FALSE,results='hide',message=FALSE,warning=FALSE}
+# Parallael Coordination Plot
+loan_parallel <- loans[c(1,4,45,5,42,43,44,41)]
+
+# Select HR titles
+loan_parallel <- subset(loan_parallel,grepl('hr',emp_title))
+
+# PLot the co-ordination plot
+plot3 <- ggparcoord(loan_parallel,columns = 4:8,
+                    groupColumn = 3,
+           showPoints = T,boxplot = T) +
+  labs(title = 'Difference in factors for HR (Hiring Managers)',
+       x='Factor', y='Simplified Value')+
+  scale_color_discrete(name='Type of Home Ownership')+
+  theme(plot.title = element_text(hjust = 0.5)) 
+plot3
+dev.off()
+```
+
+### Alluvial Plot
+This is an alluvial plot which shows how many people have paid off their loan depending on grade, month issued, and, application type. Looks like people who took a C grade are more likely to pay it off followed by B grade, A and C grade.
+
+Note: All of the loans people took here were below $700.
+
+On the other hand, if the loan was issued in January, it is more likely that it will get paid off. It is followed by February and March.
+
+The last criteria is loan application type and if you are an individual and took a C grade loan in January, there are higher chances for you to pay the loan on time. Contrast to this, of you have a G grade loan issued in March and you hace a joint account you are less likely to pay it on time.
+
+```{r echo=FALSE,results='hide',message=FALSE,warning=FALSE,fig.width=10, fig.height=9}
+loan_alluvial <- loans[c(45,47,40,48)]
+loan_alluvial$issue_month <- (factor(loan_alluvial$issue_month,
+                                    levels = c('2018-01-01',
+                                               '2018-02-01',
+                                               '2018-03-01'),
+                                    labels = c('Jan','Feb','Mar')
+                                    ))
+
+
+loan_alluvial <- table(loan_alluvial)
+loan_alluvial <- as.data.frame(loan_alluvial)
+
+# Select people who paid thier total loan
+loan_alluvial <- loan_alluvial %>% filter(loan_status=='Fully Paid')
+aggregate(Freq~issue_month+application_type+loan_status,data=loan_alluvial,sum)
+
+# Add a color palette
+newpalette <- brewer.pal(7,'Dark2')
+
+# Change colnames
+colnames(loan_alluvial) <- c("Grade","Month Issued","Applicant Type","Loan Status","Freq")
+
+# Plot alluvial
+alluvial(loan_alluvial[1:3],
+                   freq = loan_alluvial$Freq,
+                   col = newpalette)
+dev.off()
+
+```
+
+### Facet Scatter Plot
+
+This scatter plot shows the difference between annual income and loan amount in each plot and overall is divided by the number of historical failed to pay as an integer and public bankruptcy record as interger.
+
+As we can see there are no individuals who took a A grade loan and are potential defaulters. Also, there are more individuals who have 1 public default record and 1 historical failed to pay. Also, in that people with grade D,E,F loans have higeher loan amounts and low annula income. The size of each point is defined by the balance left on the loan.
+
+```{r echo=FALSE,results='hide',message=FALSE,warning=FALSE,fig.width=10, fig.height=9}
+
+# Potential Defaulters
+loans_n <- loans[,c(5,41,34,20,48,38,45,51)]
+
+# Convert INT as Numeric
+loans_n$loan_amount <- as.numeric(loans_n$loan_amount)
+loans_n$public_record_bankrupt <- as.numeric(loans_n$public_record_bankrupt)
+loans_n$num_historical_failed_to_pay <- as.numeric(loans_n$num_historical_failed_to_pay)
+str(loans_n)
+
+# Filter those who are late for payment
+loans_n <-loans_n %>% filter(loan_status=='Late (31-120 days)' |
+                             loan_status=="Late (16-30 days)"|
+                           loan_status=="In Grace Period" ,
+                             num_historical_failed_to_pay>=1 &
+                             public_record_bankrupt>=1)
+loans_n <-na.omit(loans_n)
+
+# Plot the facet plot
+plot4 <- loans_n %>% ggplot(aes(x=loan_amount, y= annual_income,
+                     col=grade,size=balance))+
+  geom_jitter()+
+  facet_wrap(num_historical_failed_to_pay~public_record_bankrupt) +
+  labs(title = "Probable Loan Defaulters for Each Grade",
+       x= 'Loan Amount',
+       y='Annual Income') +
+  theme(plot.title = element_text(hjust = 0.5))
+plot4  
+
+```
+
+### Histogram
+
+This was a simple visualization. We can infer only one thing from this type of plot but sometimes they are really important. In this data, we can see that residents of California have taken more loans below $20,000. It may have been because of the higher interest rate we have seen in the first graph.
+
+```{r echo=FALSE,results='hide',message=FALSE,warning=FALSE}
+# Simple histogram showing amount of loans most taken in California
+loans_ca <- loans %>% filter(state=='CA')
+plot5 <- loans_ca %>% ggplot(aes(x=loan_amount),col=grade) + 
+  geom_histogram(binwidth = 5000,alpha=0.6,col='blue')+
+  theme_bw() + labs(title = "Loans Recieved in California",
+                    x= 'Loan Amount',y='Count')+
+  theme(plot.title = element_text(hjust = 0.5)) 
+plot5
+```
+
+## Linear Regression
+
+For this prediction analysis I used the Generalized Linear Regression Method to predict interest rate given grade. This prediction model had an accuracy of 97.69 %. We can see how powerful the grade variable is in this linear regression algorithm.
+
+The plot below is a jitters plot and we can see how well the algorithm performed. The testing data had 2000 rows and we can see how clean the graph is. The algorithm can be even more better if we can be able to find the other influencing factor.
+
+
+```{r echo=FALSE,results='hide',message=FALSE,warning=FALSE}
+loans_linear <- loans[,c(18,5,6,39,40,41,42,43,44,45)]
+
+
+
+set.seed(100)
+
+# Create sample 8000 indices
+index <- sample(1:nrow(loans_linear), 0.8*nrow(loans_linear)) 
+
+# Training Data
+train <- loans_linear[index, ]
+
+# Testing Data
+test  <- loans_linear[-index, ]   
+
+# Crate Linear Model
+model <- glm(interest_rate ~ grade
+            , data=train)
+summary(model)
+
+# Predict Test Data
+predicted <- predict(model,test)
+predicted
+
+
+combined <- data.frame(cbind(actuals=test$interest_rate, predicteds=predicted))
+
+# Find accuracy of the data
+accuracy <- cor(combined)
+accuracy
+head(combined)
+
+# Plot the data and accuracy
+plot(combined$predicteds,                                
+     combined$actuals,
+     xlab='Predicted',
+     ylab='Actual',
+     main='Actual vs. Predicted')
+abline(a = 0,   b=1,                                     
+       col = "red",
+       lwd = 2)
+text(x=12,y=30,paste("Accuracy:",round(accuracy[2],digits = 6)*100,'%'))
+dev.off()
+
+```
+
+## Random Forests
+
+For this random forests algorithm, i used the default 500 forests to find the interest rate given verified income, loan amount, installment, total_credit-utilized, term and application type.
+
+Even after specifying a lot of variables to make a better prediction the model had an accuracy of about 82.06%. Grade as we have seen in the linear regression has a strong influence on interest rate.
+```{r echo=FALSE,results='hide',message=FALSE,warning=FALSE}
+set.seed(1)
+
+# Create a Random Forest Model
+model2 <- randomForest(
+  formula = interest_rate ~ verified_income+loan_amount+ installment+
+    total_credit_utilized + term + application_type,
+  data = train
+)
+
+
+model
+
+# Predict the model
+predicted2 <- predict(model2,test)
+combined2 <- data.frame(cbind(actual=test$interest_rate, predicted = predicted2))
+
+# Find the accuracy
+accuracy2 <- cor(combined2)
+
+# Plot the data and accuracy
+plot(x= combined2$predicted,
+     y= combined2$actual,
+     xlab='Precited',
+     ylab='Actuals',
+     main='Actual vs Predicted (Random Forests)')
+abline(a = 0,                                        # Add straight line
+       b = 1,
+       col = "red",
+       lwd = 2)
+text(x=12,y=30,paste("Accuracy:",round(accuracy2[2],digits = 6)*100,"%"))
+
+```
+
+If I had more time, I would create a training data set with variables in different order and also set a bias variable to add any bias in the process to attain model accuracy. Also, for different algorithms we can be able to select the learning rate and variables as such which can help produce more effective and better predictions. They do require a lot of time to create and find the exact variables.

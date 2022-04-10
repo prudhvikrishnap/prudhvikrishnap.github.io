@@ -1,13 +1,31 @@
-setwd("~/Downloads")
+---
+title: "case_study2"
+author: "Prudhvi"
+date: "4/10/2022"
+output: html_document
+---
 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Load Libraries and Data
+
+```{r echo=TRUE,results='hide',message=FALSE,warning=FALSE}
 # Required Libraries
 library(dplyr)
 library(ggplot2)
-
 # Load the data
 orders <- read.csv('casestudy.csv')
 str(orders)
-View(orders)
+
+```
+
+# Divide Data
+```{r echo=FALSE,results='hide',message=FALSE,warning=FALSE}
+
+
 
 orders <- orders[,-c(1)]
 
@@ -17,29 +35,37 @@ year16<- orders %>% filter(year==2016)
 
 year17<- orders %>% filter(year==2017)
 
-
+```
+## Results {.tabset}
+### Total revenue
+```{r comment=NA,echo=FALSE}
 # Total net revenue in year 2017
 a <- aggregate(net_revenue~year,orders,sum)
 a
-
+```
+### New Customers
+```{r comment=NA,echo=FALSE}
 # New Customer
 
 # New Customer 2015
-aggregate(net_revenue~year,year15,sum)[1,2]
-#29036749
+aggregate(net_revenue~year,year15,sum)
+
 
 # New Customer 2016
 b <-anti_join(year16,year15,by='customer_email')
 b <- na.omit(b) 
-aggregate(net_revenue~year,b,sum)[1,2]
-# 18245491
+aggregate(net_revenue~year,b,sum)
+
 
 # New Customer 2017
 c <-anti_join(year17,year16,by='customer_email')
 c <- na.omit(c) 
-aggregate(net_revenue~year,c,sum)[1,2]
-# 28776235
+aggregate(net_revenue~year,c,sum)
 
+
+```
+### Existing Customer Growth
+```{r comment=NA,echo=FALSE}
 # Existing Customer Growth
 # Revenue 2015
 revenue15 <- as.numeric('29036749')
@@ -49,20 +75,29 @@ d <- left_join(year16,year15,by='customer_email')
 d <- na.omit(d)
 revenue16<- as.numeric(aggregate(net_revenue.x~year.x,d,sum)[1,2])
 revenue16_d <- revenue16-revenue15
-revenue16
+
 
 # Revenue 17 Existing
 e <- left_join(year17,year16,by='customer_email')
 e <- na.omit(e)
 revenue17<- as.numeric(aggregate(net_revenue.x~year.x,e,sum)[1,2])
 revenue17_d <- revenue17-revenue16
-revenue17
 
+
+data.frame(year=c('2015','2016','2017'),
+              existing_cust_growth=c(revenue15,revenue16_d,revenue17_d))
+```
+
+### Revneue Lost from Attrition
+```{r comment=NA,echo=FALSE}
 # Revenue lost from attrition
 f <-data.frame(year= c('2014-15','2015-16','2016-17'),
            revenue_diff = c(revenue15,revenue16_d,revenue17_d))
 f
+```
 
+### Existing Customer Revenue
+```{r comment=NA,echo=FALSE}
 # Existing Customer Revenue Current Year
 g <- data.frame(year=c('2015','2016','2017'),
            revenue_existing=c(revenue15,revenue16,revenue17) )
@@ -73,6 +108,10 @@ h <- data.frame(year=c('2015','2016','2017'),
            revenue_existing=c(revenue15,revenue16,revenue17) )
 h
 
+```
+
+### No. Of Customers
+```{r comment=NA,echo=FALSE}
 # Total Customers Current Year
 i <- data.frame(year= c('2015','2016','2017')
            ,Total_Customer=c(nrow(year15),nrow(year16),nrow(year17)))
@@ -83,32 +122,43 @@ j <- data.frame(year= c('2015','2016','2017')
            ,Total_Customer=c(nrow(year15),nrow(year16),nrow(year17)))
 j
 
+```
+
+### New Customers
+```{r comment=NA,echo=FALSE}
 # New Customers
 k <- data.frame(year= c('2015','2016','2017')
            ,New_Custoemrs=c(nrow(year15),nrow(b),nrow(c)))
 k
-
+```
+### Lost Customers
+```{r  comment=NA,echo=FALSE}
 # Lost Customers
 lost16 <- nrow(year15) - nrow(b)
-lost16
+
 
 lost17 <- ifelse((nrow(b) - nrow(c))>0,nrow(b) - nrow(c),0)
-lost17
 
 l <- data.frame(year= c('2015','2016','2017'),
            Lost_Customer = c(0,lost16,lost17))
 l
+```
 
+## Additional Plot1 
+```{r echo=FALSE,results='hide',message=FALSE,warning=FALSE}
 orders %>% group_by(year) %>% summarise(net=sum(net_revenue)) %>% 
   ggplot(aes(x=year,y=net,fill=as.factor(year))) + geom_col() +
   labs(title = 'Overall Yearly Revenue',
        x = 'Year',y='Revenue',fill='Legend') + 
   theme_classic()
+```
 
+## Additionl Plot2
+```{r echo=FALSE,results='hide',message=FALSE,warning=FALSE}
 orders %>% group_by(year) %>% 
   summarise(n=n_distinct(customer_email)) %>% 
   ggplot(aes(year,n,label=n)) + geom_line() +
   geom_label()+
   labs(x= 'Year',y='No. of distinct emails',
        title="Disticnt Email ID's per year")
-
+```
